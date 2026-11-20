@@ -12,6 +12,19 @@
             "environment": [],
             "console": "integratedTerminal",
             "preLaunchTask": "CMake: build Debug"
+        },
+        
+        {
+            "name": "Debug FunctionCallingCAF (F5)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/Debug/FunctionCallingCAF.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "console": "integratedTerminal",
+            "preLaunchTask": "CMake: build Debug"
         }
     ]
 }
