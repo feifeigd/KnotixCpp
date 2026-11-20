@@ -20,6 +20,11 @@ add_executable(FunctionCalling main.cpp)
 find_package(CAF CONFIG REQUIRED)
 find_package(CURL CONFIG REQUIRED)
 
-add_executable(FunctionCallingCAF caf_main.cpp)
+add_executable(FunctionCallingCAF
+    caf_main.cpp
+    agent_config.cpp
+    agent_conversation.cpp
+    openai_compatible_client.cpp
+)
 target_link_libraries(FunctionCallingCAF PRIVATE CAF::core CAF::net CURL::libcurl)
                                
