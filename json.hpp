@@ -1,11 +1,15 @@
 
 #include <cassert>
+#include <charconv>
 #include <map>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 // #include <string_view>
+#include <utility>
 #include <variant>
 #include <vector>
+#include <system_error>
 
 class JsonValue {
 public:
@@ -21,15 +25,23 @@ private:
     ValueType value_{nullptr};
 public:
     JsonValue() = default;
+    JsonValue(JsonValue const&) = default;
+    JsonValue(JsonValue&&) noexcept = default;
+    JsonValue& operator=(JsonValue const&) = default;
+    JsonValue& operator=(JsonValue&&) noexcept = default;
+
     JsonValue(std::nullptr_t): value_{nullptr}{}
     JsonValue(bool b): value_{b}{}
     JsonValue(double d): value_{d}{}
     JsonValue(int i): value_{static_cast<double>(i)}{}
     JsonValue(std::string const& s): value_{s}{}
+    JsonValue(std::string&& s): value_{std::move(s)}{}
     JsonValue(char const* s): value_{s}{}
     // JsonValue(std::string_view sv): value_{std::string{sv.data(), sv.size()}}{}
     JsonValue(std::vector<JsonValue> const& v): value_{v}{}
+    JsonValue(std::vector<JsonValue>&& v): value_{std::move(v)}{}
     JsonValue(std::map<std::string, JsonValue> const& m): value_{m}{}
+    JsonValue(std::map<std::string, JsonValue>&& m): value_{std::move(m)}{}
     JsonValue(std::initializer_list<JsonValue> values): value_{std::vector<JsonValue>(values)}{}
     
     template<typename T>
@@ -188,29 +200,20 @@ private:
     JsonValue parseNumber(){
         skipWhitespace();
         auto start = pos_;
-        auto size = input_.size();
-        
-        if(pos_ < size ){
-            if(auto c = input_[pos_]; '-' == c || '+' == c)
-                ++pos_;            
-        }
-        while(pos_ < size){
-            auto c = input_[pos_];
-            switch(c){
-            case '.': case 'e': case 'E': case '-': case '+': ++pos_;
-            default:
-                if(std::isdigit(c))
-                    ++pos_;
-                break;
-            }
-        }
-
-        return JsonValue{std::stod(input_.substr(start, pos_ - start))};
+        auto const input_data = input_.data();
+        auto const first = input_data + pos_;
+        auto const last = input_data + input_.size();
+        double value = 0;
+        auto [ptr, ec] = std::from_chars(first, last, value, std::chars_format::general);
+        if (ec != std::errc{} || ptr == first)
+            throw std::runtime_error("Invalid number at position " + std::to_string(start));
+        pos_ = static_cast<size_t>(ptr - input_data);
+        return JsonValue{value};
     }
 
     JsonValue parseLiteral(){
         skipWhitespace();
-        auto sub4 = input_.substr(pos_, 4);
+        auto const sub4 = input_.substr(pos_, 4);
         if("null" == sub4){
             pos_ += 4;
             return {};
@@ -219,7 +222,7 @@ private:
             pos_ += 4;
             return true;
         }
-        auto sub5 = input_.substr(pos_, 5);
+        auto const sub5 = input_.substr(pos_, 5);
         if("false" == sub5){
             pos_ += 5;
             return false;
@@ -261,11 +264,10 @@ public:
             obj.emplace(key, parseValue());
             switch(auto c = peek(); c){
                 case ',': consume(); continue;
-                case '}': consume(); break;
+                case '}': consume(); return obj;
                 default: throw std::runtime_error("Expected ',' or '}' in object");
             }
         }
-        return obj;
     }
 
     JsonValue parseArray(){
@@ -280,11 +282,28 @@ public:
             arr.push_back(parseValue());
             switch(auto c = peek(); c){
                 case ',': consume(); continue;
-                case ']': consume(); break;
+                case ']': consume(); return arr;
                 default: throw std::runtime_error("Expected ',' or ']' in array");
             }
         }
-
-        return arr;
     }
 };
+
+template <class Inspector>
+bool inspect(Inspector& inspector, JsonValue& value) {
+    auto get = [&value] {
+        return value.toString();
+    };
+
+    auto set = [&value](std::string text) {
+        try {
+            JsonParser parser{text};
+            value = parser.parse();
+            return true;
+        } catch (std::exception const&) {
+            return false;
+        }
+    };
+
+    return inspector.apply(get, set);
+}

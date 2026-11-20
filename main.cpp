@@ -103,8 +103,14 @@ class FunctionRegistry {
     }
 
     JsonValue executeFromToolCall(std::string const& toolCall_json)const{
-        JsonParser parser{toolCall_json};
-        return executeFromToolCall(parser.parse());
+        try {
+            JsonParser parser{toolCall_json};
+            return executeFromToolCall(parser.parse());
+        } catch (std::exception const& e) {
+            return std::map<std::string, JsonValue>{
+                {"error", std::string{"Invalid tool-call JSON: "} + e.what()}
+            };
+        }
     }
 
     // 从 LLM 的 function call 响应中执行
@@ -127,12 +133,18 @@ class FunctionRegistry {
     }
     */
     JsonValue executeOpenAIToolCall(const JsonValue& toolCall) {
-        auto& func = toolCall["function"];
-        std::string name = func["name"].asString();
-        // arguments 是字符串，需要二次解析
-        JsonParser parser(func["arguments"].asString());
-        JsonValue args = parser.parse();
-        return call(name, args);
+        try {
+            auto& func = toolCall["function"];
+            std::string name = func["name"].asString();
+            // arguments 是字符串，需要二次解析
+            JsonParser parser(func["arguments"].asString());
+            JsonValue args = parser.parse();
+            return call(name, args);
+        } catch (std::exception const& e) {
+            return std::map<std::string, JsonValue>{
+                {"error", std::string{"Invalid OpenAI tool call: "} + e.what()}
+            };
+        }
     }
 };
 
