@@ -74,7 +74,7 @@ ProviderConfig loadProviderConfig() {
     }
     if (profile.hasKey("stream")) {
         auto const& stream = profile["stream"];
-        if (!stream.isBool())
+        if (!stream.isBoolean())
             throw std::runtime_error(context + " field 'stream' must be a boolean.");
         result.streaming = stream.asBool();
     }

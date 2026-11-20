@@ -431,7 +431,7 @@ private:
 
     void finish(JsonValue message, std::string error) {
         cleanup();
-        auto completion = std::move(completion_);
+        auto completion = std::move(completion_); // 只能回调一次
         if (completion)
             completion(std::move(message), std::move(error));
     }

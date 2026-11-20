@@ -1,13 +1,17 @@
 #pragma once
 
+#include "knotix/schema/tool.h"
+
 #include <cassert>
 #include <charconv>
+#include <cmath>
 #include <initializer_list>
 #include <map>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 // #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -83,11 +87,38 @@ public:
     }
 
     bool isNull()const{return std::holds_alternative<std::nullptr_t>(value_);}
-    bool isBool()const{return std::holds_alternative<bool>(value_);}
+    bool isBoolean()const{return std::holds_alternative<bool>(value_);}
     bool isNumber()const{return std::holds_alternative<double>(value_);}
+    bool isInteger()const{
+        if(!isNumber())return false;
+        auto const number = asNumber();
+        return std::isfinite(number) && std::trunc(number) == number;
+    }
     bool isString()const{return std::holds_alternative<std::string>(value_);}
     bool isArray()const{return std::holds_alternative<std::vector<JsonValue>>(value_);}
     bool isObject()const{return std::holds_alternative<std::map<std::string, JsonValue>>(value_);}
+    DataType type()const{
+        return std::visit([](auto const& value) -> DataType {
+            using T = std::decay_t<decltype(value)>;
+            if constexpr (std::is_same_v<T, std::nullptr_t>)
+                return DataType::Null;
+            else if constexpr (std::is_same_v<T, bool>)
+                return DataType::Boolean;
+            else if constexpr (std::is_same_v<T, double>)
+                return std::isfinite(value) && std::trunc(value) == value
+                           ? DataType::Integer
+                           : DataType::Number;
+            else if constexpr (std::is_same_v<T, std::string>)
+                return DataType::String;
+            else if constexpr (std::is_same_v<T, std::vector<JsonValue>>)
+                return DataType::Array;
+            else {
+                static_assert(std::is_same_v<T, std::map<std::string, JsonValue>>,
+                              "Add a DataType mapping for this variant alternative.");
+                return DataType::Object;
+            }
+        }, value_);
+    }
 
     bool asBool()const{return std::get<bool>(value_);}
     double asNumber()const{return std::get<double>(value_);}
@@ -114,7 +145,7 @@ public:
     std::string toString()const{
         if(isNull())return "null";
 
-        if(isBool()) return asBool() ? "true" : "false";
+        if(isBoolean()) return asBool() ? "true" : "false";
 
         std::ostringstream oss;
 

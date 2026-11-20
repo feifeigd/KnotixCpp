@@ -1,6 +1,7 @@
 #pragma once
 
 #include "json.hpp"
+#include "knotix/schema/tool.h"
 
 #include <functional>
 #include <map>
@@ -12,7 +13,7 @@ using FunctionHandler = std::function<JsonValue(JsonValue const& args)>;
 struct FunctionDefinition {
     std::string                        name;
     std::string                        description;
-    std::map<std::string, std::string> parameters;
+    std::map<std::string, DataType>    parameters;
     std::vector<std::string>           requiredParams;
     FunctionHandler                    handler;
 
@@ -27,7 +28,7 @@ struct FunctionDefinition {
         std::map<std::string, JsonValue> properties;
         for (auto const& [paramName, paramType] : parameters) {
             std::map<std::string, JsonValue> property;
-            property["type"] = paramType;
+            property["type"] = std::string{to_string(paramType)};
             properties[paramName] = property;
         }
         params["properties"] = properties;
@@ -42,34 +43,21 @@ class FunctionRegistry {
 private:
     std::map<std::string, FunctionDefinition> functions_;
 
-    static bool matchesType(JsonValue const& value, std::string const& type) {
-        if (type == "object")
-            return value.isObject();
-        if (type == "array")
-            return value.isArray();
-        if (type == "string")
-            return value.isString();
-        if (type == "number" || type == "integer")
-            return value.isNumber();
-        if (type == "boolean")
-            return value.isBool();
-        if (type == "null")
-            return value.isNull();
-        return true;
+    static bool matchesType(JsonValue const& value, DataType type) {
+        switch (type) {
+            case DataType::Null: return value.isNull();
+            case DataType::Object: return value.isObject();
+            case DataType::Number: return value.isNumber();
+            case DataType::Integer: return value.isInteger();
+            case DataType::String: return value.isString();
+            case DataType::Array: return value.isArray();
+            case DataType::Boolean: return value.isBoolean();
+        }
+        return false;
     }
 
     static std::string typeOf(JsonValue const& value) {
-        if (value.isObject())
-            return "object";
-        if (value.isArray())
-            return "array (" + std::to_string(value.asArray().size()) + " elements)";
-        if (value.isString())
-            return "string";
-        if (value.isNumber())
-            return "number";
-        if (value.isBool())
-            return "boolean";
-        return "null";
+        return std::string{to_string(value.type())};
     }
 
 public:
@@ -126,7 +114,8 @@ public:
             if (!matchesType(value, paramType)) {
                 return std::map<std::string, JsonValue>{
                     {"error", "Invalid type for parameter '" + paramName + "' in function '"
-                                  + name + "': expected " + paramType + ", got "
+                                  + name + "': expected "
+                                  + std::string{to_string(paramType)} + ", got "
                                   + typeOf(value)}
                 };
             }
@@ -191,7 +180,7 @@ inline FunctionRegistry makeFunctionRegistry() {
     registry.registerFunction({
         .name           = "add",
         .description    = "将两个数字相加",
-        .parameters     = {{"a", "number"}, {"b", "number"}},
+        .parameters     = {{"a", DataType::Number}, {"b", DataType::Number}},
         .requiredParams = {"a", "b"},
         .handler        = [](JsonValue const& args) -> JsonValue {
             return args["a"].asNumber() + args["b"].asNumber();
