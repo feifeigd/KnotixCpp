@@ -19,12 +19,14 @@
 #include <chrono>
 #include <cstdlib>
 #include <exception>
+#include <fstream>
 #include <functional>
 #include <future>
 #include <iostream>
 #include <limits>
 #include <map>
 #include <memory>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -102,7 +104,102 @@ struct StreamToolCall {
     std::string arguments;
 };
 
-class SseStreamParser {
+struct ProviderConfig {
+    std::string name;
+    std::string baseUrl;
+    std::string chatCompletionsPath = "/chat/completions";
+    std::string model;
+    std::string apiKey;
+    bool streaming = true;
+    JsonValue extraBody{std::map<std::string, JsonValue>{}};
+
+    std::string endpoint() const {
+        auto base = baseUrl;
+        while (!base.empty() && base.back() == '/')
+            base.pop_back();
+        return base + (chatCompletionsPath.front() == '/'
+                           ? chatCompletionsPath
+                           : "/" + chatCompletionsPath);
+    }
+};
+
+std::string requireConfigString(JsonValue const& object, std::string const& key,
+                                std::string const& context) {
+    auto const& value = object[key];
+    if (!value.isString() || value.asString().empty())
+        throw std::runtime_error(context + " requires a non-empty string '" + key + "'.");
+    return value.asString();
+}
+
+ProviderConfig loadProviderConfig() {
+    auto configPath = std::getenv("AGENT_CONFIG");
+    auto const path = configPath != nullptr && *configPath != '\0'
+                          ? std::string{configPath}
+                          : std::string{"agent.json"};
+    std::ifstream input{path, std::ios::binary};
+    if (!input)
+        throw std::runtime_error("Unable to open agent config file '" + path + "'.");
+    std::ostringstream contents;
+    contents << input.rdbuf();
+    if (input.bad())
+        throw std::runtime_error("Failed to read agent config file '" + path + "'.");
+
+    auto configText = contents.str();
+    JsonParser parser{configText};
+    auto config = parser.parse();
+    if (!config.isObject())
+        throw std::runtime_error("Agent config must be a JSON object.");
+    auto const profileName = requireConfigString(config, "active_provider", "Agent config");
+    auto const& providers = config["providers"];
+    if (!providers.isObject() || !providers.hasKey(profileName))
+        throw std::runtime_error("Agent config has no provider profile named '"
+                                 + profileName + "'.");
+    auto const& profile = providers[profileName];
+    if (!profile.isObject())
+        throw std::runtime_error("Provider profile '" + profileName + "' must be an object.");
+
+    auto const context = "Provider profile '" + profileName + "'";
+    auto const protocol = requireConfigString(profile, "protocol", context);
+    if (protocol != "openai-compatible")
+        throw std::runtime_error("Unsupported provider protocol '" + protocol
+                                 + "' in profile '" + profileName + "'.");
+
+    ProviderConfig result;
+    result.name = profileName;
+    result.baseUrl = requireConfigString(profile, "base_url", context);
+    if (result.baseUrl.compare(0, 7, "http://") != 0
+        && result.baseUrl.compare(0, 8, "https://") != 0)
+        throw std::runtime_error(context + " base_url must use http:// or https://.");
+    result.model = requireConfigString(profile, "model", context);
+
+    if (profile.hasKey("chat_completions_path")) {
+        result.chatCompletionsPath =
+            requireConfigString(profile, "chat_completions_path", context);
+    }
+    if (profile.hasKey("stream")) {
+        auto const& stream = profile["stream"];
+        if (!stream.isBool())
+            throw std::runtime_error(context + " field 'stream' must be a boolean.");
+        result.streaming = stream.asBool();
+    }
+    if (profile.hasKey("extra_body")) {
+        auto const& extraBody = profile["extra_body"];
+        if (!extraBody.isObject())
+            throw std::runtime_error(context + " field 'extra_body' must be an object.");
+        result.extraBody = extraBody;
+    }
+    if (profile.hasKey("api_key_env")) {
+        auto const apiKeyEnv = requireConfigString(profile, "api_key_env", context);
+        auto const apiKey = std::getenv(apiKeyEnv.c_str());
+        if (apiKey == nullptr || *apiKey == '\0')
+            throw std::runtime_error(context + " requires environment variable '"
+                                     + apiKeyEnv + "'.");
+        result.apiKey = apiKey;
+    }
+    return result;
+}
+
+class OpenAICompatibleSseParser {
 public:
     void feed(char const* data, size_t size) {
         for (size_t i = 0; i < size; ++i) {
@@ -118,7 +215,7 @@ public:
             processLine();
         dispatchEvent();
         if (!done_)
-            throw std::runtime_error("DeepSeek stream ended before the [DONE] event.");
+            throw std::runtime_error("Provider stream ended before the [DONE] event.");
         if (printedText_)
             std::cout << '\n';
     }
@@ -133,7 +230,7 @@ public:
             calls.reserve(toolCalls_.size());
             for (auto const& [index, call] : toolCalls_) {
                 if (call.id.empty() || call.name.empty())
-                    throw std::runtime_error("DeepSeek returned an incomplete tool call.");
+                    throw std::runtime_error("Provider returned an incomplete tool call.");
                 std::map<std::string, JsonValue> function{
                     {"name", call.name},
                     {"arguments", call.arguments},
@@ -187,7 +284,7 @@ private:
         auto event = parser.parse();
         auto const& choices = event["choices"];
         if (!choices.isArray())
-            throw std::runtime_error("DeepSeek stream event has no choices array.");
+            throw std::runtime_error("Provider stream event has no choices array.");
         if (choices.asArray().empty())
             return;
 
@@ -204,7 +301,7 @@ private:
             if (!indexValue.isNumber() || indexValue.asNumber() < 0
                 || indexValue.asNumber()
                        > static_cast<double>(std::numeric_limits<int>::max()))
-                throw std::runtime_error("DeepSeek stream returned an invalid tool-call index.");
+                throw std::runtime_error("Provider stream returned an invalid tool-call index.");
             auto const index = static_cast<size_t>(indexValue.asNumber());
             auto& toolCall = toolCalls_[index];
             auto const& id = fragment["id"];
@@ -222,7 +319,7 @@ private:
 
     void appendContent(std::string const& fragment) {
         if (!printedText_) {
-            std::cout << "DeepSeek: ";
+            std::cout << "Assistant: ";
             printedText_ = true;
         }
         content_.append(fragment);
@@ -240,7 +337,7 @@ private:
 struct StreamContext {
     explicit StreamContext(bool useStreaming) : streaming{useStreaming} {}
 
-    SseStreamParser parser;
+    OpenAICompatibleSseParser parser;
     bool streaming;
     long statusCode = 0;
     std::string errorBody;
@@ -255,7 +352,7 @@ struct StreamContext {
 
     void appendResponseBody(char const* data, size_t size) {
         if (size > responseBody.max_size() - responseBody.size())
-            throw std::runtime_error("DeepSeek response body is too large.");
+            throw std::runtime_error("Provider response body is too large.");
         responseBody.append(data, size);
     }
 };
@@ -314,16 +411,15 @@ class CurlRequest : public std::enable_shared_from_this<CurlRequest> {
 public:
     using completion_type = std::function<void(JsonValue, std::string)>;
 
-    CurlRequest(net::multiplexer& mpx, std::string apiKey, std::string payload,
-                bool streaming, completion_type completion)
+    CurlRequest(net::multiplexer& mpx, ProviderConfig provider, std::string payload,
+                completion_type completion)
         : mpx_{mpx},
-          apiKey_{std::move(apiKey)},
+          provider_{std::move(provider)},
           payload_{std::move(payload)},
-          streaming_{streaming},
-          stream_{streaming},
+          stream_{provider_.streaming},
           completion_{std::move(completion)} {
         if (payload_.size() > static_cast<size_t>(std::numeric_limits<curl_off_t>::max()))
-            throw std::runtime_error("DeepSeek request body is too large.");
+            throw std::runtime_error("Provider request body is too large.");
     }
 
     ~CurlRequest() {
@@ -346,11 +442,13 @@ private:
             if (multi_ == nullptr)
                 throw std::runtime_error("curl_multi_init failed.");
 
-            headers_.append("Authorization: Bearer " + apiKey_);
+            if (!provider_.apiKey.empty())
+                headers_.append("Authorization: Bearer " + provider_.apiKey);
             headers_.append("Content-Type: application/json");
-            headers_.append(streaming_ ? "Accept: text/event-stream"
-                                       : "Accept: application/json");
-            setCurlOption(easy_, CURLOPT_URL, "https://api.deepseek.com/chat/completions");
+            headers_.append(provider_.streaming ? "Accept: text/event-stream"
+                                                : "Accept: application/json");
+            auto const endpoint = provider_.endpoint();
+            setCurlOption(easy_, CURLOPT_URL, endpoint.c_str());
             setCurlOption(easy_, CURLOPT_HTTPHEADER, headers_.get());
             setCurlOption(easy_, CURLOPT_POST, 1L);
             setCurlOption(easy_, CURLOPT_POSTFIELDS, payload_.data());
@@ -372,7 +470,7 @@ private:
         } catch (std::exception const& e) {
             finish({}, e.what());
         } catch (...) {
-            finish({}, "Unknown error while starting DeepSeek request.");
+            finish({}, "Unknown error while starting provider request.");
         }
     }
 
@@ -412,7 +510,7 @@ private:
         } catch (std::exception const& e) {
             finish({}, e.what());
         } catch (...) {
-            finish({}, "Unknown error while processing DeepSeek response.");
+            finish({}, "Unknown error while processing provider response.");
         }
     }
 
@@ -422,22 +520,23 @@ private:
                 try {
                     std::rethrow_exception(stream_.callbackError);
                 } catch (std::exception const& e) {
-                    throw std::runtime_error(std::string{"Failed to process DeepSeek stream: "}
+                    throw std::runtime_error(std::string{"Failed to process provider stream: "}
                                              + e.what());
                 } catch (...) {
-                    throw std::runtime_error("Failed to process DeepSeek stream.");
+                    throw std::runtime_error("Failed to process provider stream.");
                 }
             }
             if (result != CURLE_OK)
-                throw std::runtime_error(std::string{"DeepSeek request failed: "}
+                throw std::runtime_error("Provider '" + provider_.name
+                                         + "' request failed: "
                                          + curlError(result, errorBuffer_));
             if (stream_.statusCode != 200)
-                throw std::runtime_error("DeepSeek HTTP error "
+                throw std::runtime_error("Provider HTTP error "
                                          + std::to_string(stream_.statusCode) + ": "
                                          + stream_.errorBody);
 
             JsonValue message;
-            if (streaming_) {
+            if (provider_.streaming) {
                 stream_.parser.finish();
                 message = stream_.parser.message();
             } else {
@@ -445,18 +544,18 @@ private:
                 auto response = parser.parse();
                 auto const& choices = response["choices"];
                 if (!choices.isArray() || choices.asArray().empty())
-                    throw std::runtime_error("DeepSeek returned no choices: "
+                    throw std::runtime_error("Provider returned no choices: "
                                              + stream_.responseBody);
                 message = choices.asArray().front()["message"];
                 if (!message.isObject())
-                    throw std::runtime_error("DeepSeek response has no assistant message: "
+                    throw std::runtime_error("Provider response has no assistant message: "
                                              + stream_.responseBody);
             }
             finish(std::move(message), {});
         } catch (std::exception const& e) {
             finish({}, e.what());
         } catch (...) {
-            finish({}, "Unknown error while processing DeepSeek response.");
+            finish({}, "Unknown error while processing provider response.");
         }
     }
 
@@ -482,9 +581,8 @@ private:
     }
 
     net::multiplexer& mpx_;
-    std::string apiKey_;
+    ProviderConfig provider_;
     std::string payload_;
-    bool streaming_;
     StreamContext stream_;
     completion_type completion_;
     CURL* easy_ = nullptr;
@@ -494,37 +592,32 @@ private:
     char errorBuffer_[CURL_ERROR_SIZE] = {};
 };
 
-JsonValue makeRequest(std::string const& model, std::vector<JsonValue> const& messages,
-                      JsonValue const& tools, bool streaming) {
-    return std::map<std::string, JsonValue>{
-        {"model", model},
+JsonValue makeRequest(ProviderConfig const& provider,
+                      std::vector<JsonValue> const& messages, JsonValue const& tools) {
+    std::map<std::string, JsonValue> request{
+        {"model", provider.model},
         {"messages", messages},
         {"tools", tools},
         {"tool_choice", "auto"},
-        {"stream", streaming},
-        {"thinking", std::map<std::string, JsonValue>{{"type", "disabled"}}},
+        {"stream", provider.streaming},
     };
+    for (auto const& [key, value] : provider.extraBody.asObject()) {
+        if (request.count(key) > 0)
+            throw std::runtime_error("Provider extra_body cannot override request field '"
+                                     + key + "'.");
+        request.emplace(key, value);
+    }
+    return request;
 }
 
-bool getStreamMode() {
-    auto const value = std::getenv("DEEPSEEK_STREAM");
-    if (value == nullptr || *value == '\0' || std::string{value} == "true")
-        return true;
-    if (std::string{value} == "false")
-        return false;
-    throw std::runtime_error("DEEPSEEK_STREAM must be 'true' or 'false'.");
-}
-
-class DeepSeekConversation : public std::enable_shared_from_this<DeepSeekConversation> {
+class AgentConversation : public std::enable_shared_from_this<AgentConversation> {
 public:
     using completion_type = std::function<void(std::exception_ptr)>;
 
-    DeepSeekConversation(net::multiplexer& mpx, std::string apiKey, std::string model,
-                        std::string prompt, bool streaming, completion_type completion)
+    AgentConversation(net::multiplexer& mpx, ProviderConfig provider, std::string prompt,
+                     completion_type completion)
         : mpx_{mpx},
-          apiKey_{std::move(apiKey)},
-          model_{std::move(model)},
-          streaming_{streaming},
+          provider_{std::move(provider)},
           registry_{makeFunctionRegistry()},
           tools_{registry_.getTools()},
           completion_{std::move(completion)} {
@@ -546,13 +639,13 @@ private:
     void requestNext() {
         constexpr size_t maxToolRounds = 8;
         if (requestCount_ >= maxToolRounds)
-            throw std::runtime_error("Exceeded the maximum number of DeepSeek tool-call rounds.");
+            throw std::runtime_error("Exceeded the maximum number of provider tool-call rounds.");
 
-        auto payload = makeRequest(model_, messages_, tools_, streaming_).toString();
+        auto payload = makeRequest(provider_, messages_, tools_).toString();
         ++requestCount_;
-        std::weak_ptr<DeepSeekConversation> weakSelf = shared_from_this();
+        std::weak_ptr<AgentConversation> weakSelf = shared_from_this();
         activeRequest_ = std::make_shared<CurlRequest>(
-            mpx_, apiKey_, std::move(payload), streaming_,
+            mpx_, provider_, std::move(payload),
             [weakSelf](JsonValue message, std::string error) {
                 if (auto self = weakSelf.lock()) {
                     self->activeRequest_.reset();
@@ -571,12 +664,12 @@ private:
     void handleResponse(JsonValue message) {
         auto const& toolCalls = message["tool_calls"];
         if (!toolCalls.isArray() || toolCalls.asArray().empty()) {
-            if (!streaming_) {
+            if (!provider_.streaming) {
                 auto const& content = message["content"];
                 if (content.isString())
-                    std::cout << "DeepSeek: " << content.asString() << '\n';
+                    std::cout << "Assistant: " << content.asString() << '\n';
                 else
-                    std::cout << "DeepSeek: " << message.toString() << '\n';
+                    std::cout << "Assistant: " << message.toString() << '\n';
             }
             finish();
             return;
@@ -607,9 +700,7 @@ private:
     }
 
     net::multiplexer& mpx_;
-    std::string apiKey_;
-    std::string model_;
-    bool streaming_;
+    ProviderConfig provider_;
     FunctionRegistry registry_;
     JsonValue tools_;
     std::vector<JsonValue> messages_;
@@ -619,19 +710,9 @@ private:
     bool finished_ = false;
 };
 
-int runDeepSeek(actor_system& sys) {
-    auto apiKey = std::getenv("DEEPSEEK_API_KEY");
-    if (apiKey == nullptr || *apiKey == '\0') {
-        std::cerr << "请先设置 DEEPSEEK_API_KEY 环境变量。\n";
-        return EXIT_FAILURE;
-    }
+int runAgent(actor_system& sys) {
+    auto provider = loadProviderConfig();
     CurlGlobal curlGlobal;
-    auto const streaming = getStreamMode();
-
-    auto modelEnv = std::getenv("DEEPSEEK_MODEL");
-    std::string model = modelEnv != nullptr && *modelEnv != '\0'
-                            ? modelEnv
-                            : "deepseek-flash";
 
     std::string prompt;
     std::cout << "请输入问题：";
@@ -645,8 +726,8 @@ int runDeepSeek(actor_system& sys) {
         throw std::runtime_error("CAF network multiplexer is unavailable.");
     std::promise<void> completion;
     auto result = completion.get_future();
-    auto conversation = std::make_shared<DeepSeekConversation>(
-        *mpx, apiKey, std::move(model), std::move(prompt), streaming,
+    auto conversation = std::make_shared<AgentConversation>(
+        *mpx, std::move(provider), std::move(prompt),
         [&completion](std::exception_ptr error) {
             if (error)
                 completion.set_exception(std::move(error));
@@ -667,9 +748,9 @@ int caf_main(actor_system& sys) {
 #endif
 
     try {
-        return runDeepSeek(sys);
+        return runAgent(sys);
     } catch (std::exception const& e) {
-        std::cerr << "DeepSeek 请求失败: " << e.what() << '\n';
+        std::cerr << "Agent 请求失败: " << e.what() << '\n';
         return EXIT_FAILURE;
     }
 }
