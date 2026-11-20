@@ -1,6 +1,7 @@
 
 #include <cassert>
 #include <charconv>
+#include <initializer_list>
 #include <map>
 #include <sstream>
 #include <stdexcept>
@@ -23,6 +24,31 @@ public:
     >;
 private:
     ValueType value_{nullptr};
+
+    static void appendJsonString(std::ostringstream& out, std::string const& text) {
+        constexpr char hex[] = "0123456789abcdef";
+        out << '"';
+        for (auto ch : text) {
+            auto c = static_cast<unsigned char>(ch);
+            switch (c) {
+                case '"': out << "\\\""; break;
+                case '\\': out << "\\\\"; break;
+                case '\b': out << "\\b"; break;
+                case '\f': out << "\\f"; break;
+                case '\n': out << "\\n"; break;
+                case '\r': out << "\\r"; break;
+                case '\t': out << "\\t"; break;
+                default:
+                    if (c < 0x20) {
+                        out << "\\u00" << hex[c >> 4] << hex[c & 0x0f];
+                    } else {
+                        out << static_cast<char>(c);
+                    }
+            }
+        }
+        out << '"';
+    }
+
 public:
     JsonValue() = default;
     JsonValue(JsonValue const&) = default;
@@ -42,7 +68,6 @@ public:
     JsonValue(std::vector<JsonValue>&& v): value_{std::move(v)}{}
     JsonValue(std::map<std::string, JsonValue> const& m): value_{m}{}
     JsonValue(std::map<std::string, JsonValue>&& m): value_{std::move(m)}{}
-    JsonValue(std::initializer_list<JsonValue> values): value_{std::vector<JsonValue>(values)}{}
     
     template<typename T>
     JsonValue(std::vector<T> const& values){
@@ -50,6 +75,10 @@ public:
         for(auto const& value : values)
             v.emplace_back(value);
         value_ = std::move(v);
+    }
+
+    static JsonValue array(std::initializer_list<JsonValue> values) {
+        return JsonValue(std::vector<JsonValue>(values));
     }
 
     bool isNull()const{return std::holds_alternative<std::nullptr_t>(value_);}
@@ -96,26 +125,7 @@ public:
                 oss << d;
             }
         }else if(isString()){
-            oss << "\"";
-            for(auto c : asString()){
-                switch(c){
-                case '"': {
-                        oss << "\\\"";
-                    }
-                    break;
-                case '\\': {
-                        oss << "\\\\";
-                    }
-                    break;
-                case '\n': {
-                        oss << "\\n";
-                    }
-                    break;
-                default:
-                    oss << c;
-                }
-            }
-            oss << "\"";
+            appendJsonString(oss, asString());
         }else if(isArray()){
             oss << "[";
             auto const& arr = asArray();
@@ -130,7 +140,8 @@ public:
             for(auto const& [k, v] : asObject()){
                 if(!first)oss << ",";
                 first = false;
-                oss << "\"" << k << "\":" << v.toString();
+                appendJsonString(oss, k);
+                oss << ":" << v.toString();
             }
             oss << "}";
         }
@@ -208,7 +219,7 @@ private:
         if (ec != std::errc{} || ptr == first)
             throw std::runtime_error("Invalid number at position " + std::to_string(start));
         pos_ = static_cast<size_t>(ptr - input_data);
-        return JsonValue{value};
+        return value;
     }
 
     JsonValue parseLiteral(){
