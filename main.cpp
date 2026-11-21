@@ -6,6 +6,6 @@ int main() {
     JsonValue value{1};
     FunctionRegistry registry = makeFunctionRegistry();
 
-    std::println("schemas={}", registry.getSchemas().toString());
+    std::println("schemas={}", registry.getSchemas().dump());
     return 0;
 }

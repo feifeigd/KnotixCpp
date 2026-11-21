@@ -4,6 +4,7 @@
     "builtin-baseline": "f1319fdb663dad631982fd9b62c9ea71414981b6",
     "dependencies": [
         "caf",
-        "curl"
+        "curl",
+        "nlohmann-json"
     ]
 }

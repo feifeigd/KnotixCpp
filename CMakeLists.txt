@@ -15,6 +15,8 @@ if(MSVC)
     add_compile_options(/utf-8)
 endif()
 
+find_package(nlohmann_json CONFIG REQUIRED)
+
 add_subdirectory(knotix)
 
 add_executable(FunctionCalling main.cpp)

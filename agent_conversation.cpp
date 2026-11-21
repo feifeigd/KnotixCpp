@@ -19,7 +19,7 @@ JsonValue makeRequest(ProviderConfig const& provider,
         {"tool_choice", "auto"},
         {"stream",      provider.streaming},
     };
-    for (auto const& [key, value] : provider.extraBody.asObject()) {
+    for (auto const& [key, value] : provider.extraBody.items()) {
         if (request.count(key) > 0)
             throw std::runtime_error("Provider extra_body cannot override request field '"
                                      + key + "'.");
@@ -56,7 +56,7 @@ void AgentConversation::requestNext() {
     if (requestCount_ >= maxToolRounds)
         throw std::runtime_error("Exceeded the maximum number of provider tool-call rounds.");
 
-    auto payload = makeRequest(provider_, messages_, tools_).toString();
+    auto payload = makeRequest(provider_, messages_, tools_).dump();
     ++requestCount_;
     std::weak_ptr<AgentConversation> weakSelf = shared_from_this();
     requestChatCompletion(
@@ -76,29 +76,29 @@ void AgentConversation::requestNext() {
 
 // LLM 的回复
 void AgentConversation::handleResponse(JsonValue message) {
-    auto const& toolCalls = message["tool_calls"];
-    if (!toolCalls.isArray() || toolCalls.asArray().empty()) {
+    auto const& toolCalls = jsonGet(message, "tool_calls");
+    if (!toolCalls.is_array() || toolCalls.empty()) {
         if (!provider_.streaming) {
-            auto const& content = message["content"];
-            if (content.isString())
-                std::cout << "Assistant: " << content.asString() << '\n';
+            auto const& content = jsonGet(message, "content");
+            if (content.is_string())
+                std::cout << "Assistant: " << content.get<std::string>() << '\n';
             else
-                std::cout << "Assistant: " << message.toString() << '\n';
+                std::cout << "Assistant: " << message.dump() << '\n';
         }
         finish();
         return;
     }
 
     messages_.push_back(message);
-    for (auto const& toolCall : toolCalls.asArray()) {
-        auto const& id = toolCall["id"].asString();
+    for (auto const& toolCall : toolCalls) {
+        auto const& id = jsonGet(toolCall, "id").get_ref<std::string const&>();
         auto result = registry_.executeOpenAIToolCall(toolCall);
-        if (result.isObject() && result.hasKey("error"))
-            throw std::runtime_error(result["error"].asString());
+        if (result.is_object() && result.contains("error"))
+            throw std::runtime_error(jsonGet(result, "error").get<std::string>());
         messages_.emplace_back(std::map<std::string, JsonValue>{
             {"role",         "tool"},
             {"tool_call_id", id},
-            {"content",      result.toString()},
+            {"content",      result.dump()},
         });
     }
     requestNext();

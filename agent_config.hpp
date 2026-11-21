@@ -13,7 +13,7 @@ struct ProviderConfig {
     std::string model;
     std::string apiKey;
     bool streaming = true;
-    JsonValue extraBody{std::map<std::string, JsonValue>{}};
+    JsonValue extraBody = JsonValue::object();
 
     std::string endpoint() const;
 };

@@ -7,3 +7,4 @@ add_library(knotix STATIC
 )
 
 target_include_directories(knotix PUBLIC "${PROJECT_SOURCE_DIR}")
+target_link_libraries(knotix PUBLIC nlohmann_json::nlohmann_json)

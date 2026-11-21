@@ -4,9 +4,11 @@
 #include <knotix/schema/message.h>
 #include "knotix/schema/tool.h"
 
+#include <cmath>
 #include <functional>
 #include <map>
 #include <string>
+#include <string_view>
 #include <vector>
 
 using FunctionHandler = std::function<JsonValue(JsonValue const& args)>;
@@ -46,19 +48,41 @@ private:
 
     static bool matchesType(JsonValue const& value, DataType type) {
         switch (type) {
-            case DataType::Null: return value.isNull();
-            case DataType::Object: return value.isObject();
-            case DataType::Number: return value.isNumber();
-            case DataType::Integer: return value.isInteger();
-            case DataType::String: return value.isString();
-            case DataType::Array: return value.isArray();
-            case DataType::Boolean: return value.isBoolean();
+            case DataType::Null: return value.is_null();
+            case DataType::Object: return value.is_object();
+            case DataType::Number: return value.is_number();
+            case DataType::Integer: return isIntegerValue(value);
+            case DataType::String: return value.is_string();
+            case DataType::Array: return value.is_array();
+            case DataType::Boolean: return value.is_boolean();
         }
         return false;
     }
 
-    static std::string typeOf(JsonValue const& value) {
-        return std::string{to_string(value.type())};
+    static bool isIntegerValue(JsonValue const& value) {
+        if (!value.is_number())
+            return false;
+        auto const number = value.get<double>();
+        return std::isfinite(number) && std::trunc(number) == number;
+    }
+
+    static std::string_view typeOf(JsonValue const& value) {
+        using ValueType = JsonValue::value_t;
+        switch (value.type()) {
+            case ValueType::null: return to_string(DataType::Null);
+            case ValueType::object: return to_string(DataType::Object);
+            case ValueType::number_integer:
+            case ValueType::number_unsigned: return to_string(DataType::Integer);
+            case ValueType::number_float:
+                return isIntegerValue(value) ? to_string(DataType::Integer)
+                                             : to_string(DataType::Number);
+            case ValueType::string: return to_string(DataType::String);
+            case ValueType::array: return to_string(DataType::Array);
+            case ValueType::boolean: return to_string(DataType::Boolean);
+            case ValueType::binary: return "binary";
+            case ValueType::discarded: return "discarded";
+        }
+        return "unknown";
     }
 
 public:
@@ -101,7 +125,7 @@ public:
 
         auto const& definition = getFunction(name);
         for (auto const& required : definition.requiredParams) {
-            if (!args.hasKey(required)) {
+            if (!args.contains(required)) {
                 return std::map<std::string, JsonValue>{
                     {"error", "Missing required parameter: " + required}
                 };
@@ -109,15 +133,15 @@ public:
         }
 
         for (auto const& [paramName, paramType] : definition.parameters) {
-            if (!args.hasKey(paramName))
+            if (!args.contains(paramName))
                 continue;
-            auto const& value = args[paramName];
+            auto const& value = jsonGet(args, paramName);
             if (!matchesType(value, paramType)) {
                 return std::map<std::string, JsonValue>{
                     {"error", "Invalid type for parameter '" + paramName + "' in function '"
                                   + name + "': expected "
                                   + std::string{to_string(paramType)} + ", got "
-                                  + typeOf(value)}
+                                  + std::string{typeOf(value)}}
                 };
             }
         }
@@ -133,8 +157,7 @@ public:
 
     JsonValue executeFromToolCall(std::string const& toolCallJson) const {
         try {
-            JsonParser parser{toolCallJson};
-            return executeFromToolCall(parser.parse());
+            return executeFromToolCall(JsonValue::parse(toolCallJson));
         } catch (std::exception const& e) {
             return std::map<std::string, JsonValue>{
                 {"error", std::string{"Invalid tool-call JSON: "} + e.what()}
@@ -143,18 +166,18 @@ public:
     }
 
     JsonValue executeFromToolCall(JsonValue const& toolCall) const {
-        return call(toolCall["name"].asString(), toolCall["arguments"]);
+        return call(jsonGet(toolCall, "name").get<std::string>(),
+                    jsonGet(toolCall, "arguments"));
     }
 
     JsonValue executeOpenAIToolCall(JsonValue const& toolCall) const {
         try {
-            auto const function = message::parseFunctionCall(toolCall["function"]);
+            auto const function = message::parseFunctionCall(jsonGet(toolCall, "function"));
             
             auto const& arguments = function.Arguments;
             JsonValue args;
             if (!arguments.empty()) {
-                JsonParser parser{arguments};
-                args = parser.parse();
+                args = JsonValue::parse(arguments);
             }
             return call(function.Name, args);
         } catch (std::exception const& e) {
@@ -174,7 +197,7 @@ inline FunctionRegistry makeFunctionRegistry() {
         .parameters     = {{"a", DataType::Number}, {"b", DataType::Number}},
         .requiredParams = {"a", "b"},
         .handler        = [](JsonValue const& args) -> JsonValue {
-            return args["a"].asNumber() + args["b"].asNumber();
+            return jsonGet(args, "a").get<double>() + jsonGet(args, "b").get<double>();
         },
     });
     return registry;

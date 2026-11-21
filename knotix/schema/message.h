@@ -19,24 +19,24 @@ struct FunctionCall {
 };
 
 inline FunctionCall const parseFunctionCall(JsonValue const& value) {
-    if (!value.isObject())
+    if (!value.is_object())
         throw std::invalid_argument("FunctionCall must be a JSON object");
 
-    auto const& name = value["name"];
-    auto const& arguments = value["arguments"];
+    auto const& name = jsonGet(value, "name");
+    auto const& arguments = jsonGet(value, "arguments");
 
-    if (!name.isString())
+    if (!name.is_string())
         throw std::invalid_argument("FunctionCall.name must be a string");
 
     std::string args;
-    if (arguments.isString())
-        args = arguments.asString(); // 常见的 OpenAI 格式
-    else if (arguments.isObject() || arguments.isArray())
-        args = arguments.toString(); // 若 arguments 已经是 JSON 值，序列化后存入 string
+    if (arguments.is_string())
+        args = arguments.get<std::string>(); // 常见的 OpenAI 格式
+    else if (arguments.is_object() || arguments.is_array())
+        args = arguments.dump(); // 若 arguments 已经是 JSON 值，序列化后存入 string
     else
         throw std::invalid_argument("FunctionCall.arguments must be a string, object, or array");
 
-    return {.Name = name.asString(), .Arguments = std::move(args)};
+    return {.Name = name.get<std::string>(), .Arguments = std::move(args)};
 }
 
 }

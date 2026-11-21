@@ -148,40 +148,39 @@ private:
             return;
         }
 
-        JsonParser parser{data};
-        auto event = parser.parse();
-        auto const& choices = event["choices"];
-        if (!choices.isArray())
+        auto event = JsonValue::parse(data);
+        auto const& choices = jsonGet(event, "choices");
+        if (!choices.is_array())
             throw std::runtime_error("Provider stream event has no choices array.");
-        if (choices.asArray().empty())
+        if (choices.empty())
             return;
 
-        auto const& delta = choices.asArray().front()["delta"];
-        auto const& content = delta["content"];
-        if (content.isString())
-            appendContent(content.asString());
+        auto const& delta = jsonGet(choices.front(), "delta");
+        auto const& content = jsonGet(delta, "content");
+        if (content.is_string())
+            appendContent(content.get<std::string>());
 
-        auto const& fragments = delta["tool_calls"];
-        if (!fragments.isArray())
+        auto const& fragments = jsonGet(delta, "tool_calls");
+        if (!fragments.is_array())
             return;
-        for (auto const& fragment : fragments.asArray()) {
-            auto const& indexValue = fragment["index"];
-            if (!indexValue.isNumber() || indexValue.asNumber() < 0
-                || indexValue.asNumber()
+        for (auto const& fragment : fragments) {
+            auto const& indexValue = jsonGet(fragment, "index");
+            if (!indexValue.is_number() || indexValue.get<double>() < 0
+                || indexValue.get<double>()
                        > static_cast<double>(std::numeric_limits<int>::max()))
                 throw std::runtime_error("Provider stream returned an invalid tool-call index.");
-            auto const index = static_cast<size_t>(indexValue.asNumber());
+            auto const index = static_cast<size_t>(indexValue.get<double>());
             auto& toolCall = toolCalls_[index];
-            auto const& id = fragment["id"];
-            if (id.isString())
-                toolCall.id.append(id.asString());
-            auto const& function = fragment["function"];
-            auto const& name = function["name"];
-            if (name.isString())
-                toolCall.name.append(name.asString());
-            auto const& arguments = function["arguments"];
-            if (arguments.isString())
-                toolCall.arguments.append(arguments.asString());
+            auto const& id = jsonGet(fragment, "id");
+            if (id.is_string())
+                toolCall.id.append(id.get<std::string>());
+            auto const& function = jsonGet(fragment, "function");
+            auto const& name = jsonGet(function, "name");
+            if (name.is_string())
+                toolCall.name.append(name.get<std::string>());
+            auto const& arguments = jsonGet(function, "arguments");
+            if (arguments.is_string())
+                toolCall.arguments.append(arguments.get<std::string>());
         }
     }
 
@@ -410,14 +409,13 @@ private:
                 stream_.parser.finish();
                 message = stream_.parser.message();
             } else {
-                JsonParser parser{stream_.responseBody};
-                auto response = parser.parse();
-                auto const& choices = response["choices"];
-                if (!choices.isArray() || choices.asArray().empty())
+                auto response = JsonValue::parse(stream_.responseBody);
+                auto const& choices = jsonGet(response, "choices");
+                if (!choices.is_array() || choices.empty())
                     throw std::runtime_error("Provider returned no choices: "
                                              + stream_.responseBody);
-                message = choices.asArray().front()["message"];
-                if (!message.isObject())
+                message = jsonGet(choices.front(), "message");
+                if (!message.is_object())
                     throw std::runtime_error("Provider response has no assistant message: "
                                              + stream_.responseBody);
             }
