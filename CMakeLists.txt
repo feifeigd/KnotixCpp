@@ -15,7 +15,10 @@ if(MSVC)
     add_compile_options(/utf-8)
 endif()
 
+add_subdirectory(knotix)
+
 add_executable(FunctionCalling main.cpp)
+target_link_libraries(FunctionCalling PRIVATE knotix)
 
 find_package(CAF CONFIG REQUIRED)
 find_package(CURL CONFIG REQUIRED)
@@ -26,5 +29,5 @@ add_executable(FunctionCallingCAF
     agent_conversation.cpp
     openai_compatible_client.cpp
 )
-target_link_libraries(FunctionCallingCAF PRIVATE CAF::core CAF::net CURL::libcurl)
+target_link_libraries(FunctionCallingCAF PRIVATE knotix CAF::core CAF::net CURL::libcurl)
                                

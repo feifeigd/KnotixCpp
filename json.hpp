@@ -122,6 +122,7 @@ public:
 
     bool asBool()const{return std::get<bool>(value_);}
     double asNumber()const{return std::get<double>(value_);}
+    int64_t asInteger()const{return static_cast<int64_t>(std::get<double>(value_));}
     std::string asString()const{return std::get<std::string>(value_);}
     std::vector<JsonValue> const& asArray()const{return std::get<std::vector<JsonValue>>(value_);}
     std::map<std::string, JsonValue> const& asObject()const{return std::get<std::map<std::string, JsonValue>>(value_);}

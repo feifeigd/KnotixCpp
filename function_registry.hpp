@@ -1,6 +1,7 @@
 #pragma once
 
 #include "json.hpp"
+#include <knotix/schema/message.h>
 #include "knotix/schema/tool.h"
 
 #include <functional>
@@ -147,25 +148,15 @@ public:
 
     JsonValue executeOpenAIToolCall(JsonValue const& toolCall) const {
         try {
-            auto const& function = toolCall["function"];
-            auto name = function["name"].asString();
-            auto const& arguments = function["arguments"];
+            auto const function = message::parseFunctionCall(toolCall["function"]);
+            
+            auto const& arguments = function.Arguments;
             JsonValue args;
-            if (arguments.isString()) {
-                auto text = arguments.asString();
-                if (text.empty())
-                    throw std::runtime_error("Empty arguments for function '" + name
-                                             + "': " + toolCall.toString());
-                JsonParser parser{text};
+            if (!arguments.empty()) {
+                JsonParser parser{arguments};
                 args = parser.parse();
-            } else if (arguments.isObject()) {
-                args = arguments;
-            } else {
-                throw std::runtime_error("Arguments for function '" + name
-                                         + "' must be a JSON string or object: "
-                                         + toolCall.toString());
             }
-            return call(name, args);
+            return call(function.Name, args);
         } catch (std::exception const& e) {
             return std::map<std::string, JsonValue>{
                 {"error", std::string{"Invalid OpenAI tool call: "} + e.what()}
