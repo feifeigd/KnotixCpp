@@ -28,13 +28,15 @@ inline bool isIntegerValue(json const& value) {
 }
 
 inline std::string_view dataTypeName(DataType type) {
-    static const std::string nullName    = json{DataType::Null}.get<std::string>();
-    static const std::string objectName  = json{DataType::Object}.get<std::string>();
-    static const std::string numberName  = json{DataType::Number}.get<std::string>();
-    static const std::string integerName = json{DataType::Integer}.get<std::string>();
-    static const std::string stringName  = json{DataType::String}.get<std::string>();
-    static const std::string arrayName   = json{DataType::Array}.get<std::string>();
-    static const std::string booleanName = json{DataType::Boolean}.get<std::string>();
+    // Note: parentheses, not braces. json{value} would create a one-element
+    // array instead of converting the enum to its JSON string.
+    static const std::string nullName    = json(DataType::Null).get<std::string>();
+    static const std::string objectName  = json(DataType::Object).get<std::string>();
+    static const std::string numberName  = json(DataType::Number).get<std::string>();
+    static const std::string integerName = json(DataType::Integer).get<std::string>();
+    static const std::string stringName  = json(DataType::String).get<std::string>();
+    static const std::string arrayName   = json(DataType::Array).get<std::string>();
+    static const std::string booleanName = json(DataType::Boolean).get<std::string>();
 
     switch (type) {
         case DataType::Null:    return nullName;

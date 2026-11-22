@@ -32,4 +32,11 @@ add_executable(FunctionCallingCAF
     openai_compatible_client.cpp
 )
 target_link_libraries(FunctionCallingCAF PRIVATE knotix CAF::core CAF::net CURL::libcurl)
+
+option(KNOTIX_BUILD_TESTS "Build the CAF-based unit tests" ON)
+if(KNOTIX_BUILD_TESTS)
+    add_subdirectory(third_party/caf-test)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
                                

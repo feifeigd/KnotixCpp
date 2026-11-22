@@ -81,11 +81,11 @@ public:
 
     json getTools() const {
         auto tools = json::array();
-        for (auto const& [name, definition] : functions_) {
-            tools.emplace_back(std::map<std::string, json>{
+        for (auto const& entry : functions_) {
+            tools.push_back(json::object({
                 {"type", "function"},
-                {"function", definition.toSchema()},
-            });
+                {"function", entry.second.toSchema()},
+            }));
         }
         return tools;
     }
@@ -149,7 +149,7 @@ public:
             auto const function = jsonGet(toolCall, "function").get<message::FunctionCall>();
             
             auto const& arguments = function.Arguments;
-            json args;
+            auto args = json::object();
             if (!arguments.empty()) {
                 args = json::parse(arguments);
             }

@@ -36,4 +36,21 @@ inline void from_json(const json& j, FunctionCall& fc) {
     j.at("arguments").get_to(fc.Arguments);
 }
 
+struct Message {
+    RoleType Role;
+    std::string Content;
+};
+
+inline void from_json(const json& j, Message& message) {
+    j.at("role").get_to(message.Role);
+    j.at("content").get_to(message.Content);
 }
+
+inline void to_json(json& j, const Message& message) {
+    j = json{
+        {"role", message.Role},
+        {"content", message.Content},
+    };
+}
+
+} // namespace message
