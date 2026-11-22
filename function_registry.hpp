@@ -171,7 +171,7 @@ inline FunctionRegistry makeFunctionRegistry() {
         .parameters     = {{"a", DataType::Number}, {"b", DataType::Number}},
         .requiredParams = {"a", "b"},
         .handler        = [](json const& args) -> json {
-            return jsonGet(args, "a").get<double>() + jsonGet(args, "b").get<double>();
+            return args["a"].get<double>() + args["b"].get<double>();
         },
     });
     return registry;

@@ -7,8 +7,10 @@ add_executable(knotix_tests
     agent_config_test.cpp
     sse_parser_test.cpp
     sse_end_to_end_test.cpp
+    agent_conversation_test.cpp
     "${PROJECT_SOURCE_DIR}/agent_config.cpp"
     "${PROJECT_SOURCE_DIR}/openai_compatible_client.cpp"
+    "${PROJECT_SOURCE_DIR}/agent_conversation.cpp"
 )
 
 find_package(CURL CONFIG REQUIRED)
