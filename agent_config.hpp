@@ -18,6 +18,8 @@ struct ProviderConfig {
     std::string endpoint() const;
 };
 
+void from_json(json const& value, ProviderConfig& config);
+
 ProviderConfig loadProviderConfig();
 
 } // namespace agent
