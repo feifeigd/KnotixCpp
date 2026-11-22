@@ -3,7 +3,7 @@
 #include <print>
 
 int main() {
-    JsonValue value{1};
+    json value{1};
     FunctionRegistry registry = makeFunctionRegistry();
 
     std::println("schemas={}", registry.getSchemas().dump());

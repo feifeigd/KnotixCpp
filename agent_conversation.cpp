@@ -10,15 +10,15 @@
 namespace agent {
 namespace {
 
-JsonValue makeRequest(ProviderConfig const& provider,
-                      std::vector<JsonValue> const& messages, JsonValue const& tools) {
-    std::map<std::string, JsonValue> request{
+json makeRequest(ProviderConfig const& provider,
+                      std::vector<json> const& messages, json const& tools) {
+    auto request = json::object({
         {"model",       provider.model},
         {"messages",    messages},
         {"tools",       tools},
         {"tool_choice", "auto"},
         {"stream",      provider.streaming},
-    };
+    });
     for (auto const& [key, value] : provider.extraBody.items()) {
         if (request.count(key) > 0)
             throw std::runtime_error("Provider extra_body cannot override request field '"
@@ -37,14 +37,14 @@ AgentConversation::AgentConversation(caf::net::multiplexer& mpx, ProviderConfig 
       registry_{makeFunctionRegistry()},
       tools_{registry_.getTools()},
       completion_{std::move(completion)} {
-    messages_.emplace_back(std::map<std::string, JsonValue>{
+    messages_.push_back(json::object({
         {"role", "system"},
         {"content", "调用工具时必须严格遵循工具的 JSON Schema。"},
-    });
-    messages_.emplace_back(std::map<std::string, JsonValue>{
+    }));
+    messages_.push_back(json::object({
         {"role", "user"},
         {"content", std::move(prompt)},
-    });
+    }));
 }
 
 void AgentConversation::start() {
@@ -61,7 +61,7 @@ void AgentConversation::requestNext() {
     std::weak_ptr<AgentConversation> weakSelf = shared_from_this();
     requestChatCompletion(
         mpx_, provider_, std::move(payload),
-        [weakSelf](JsonValue message, std::string error) {
+        [weakSelf](json message, std::string error) {
             if (auto self = weakSelf.lock()) {
                 try {
                     if (!error.empty())
@@ -75,7 +75,7 @@ void AgentConversation::requestNext() {
 }
 
 // LLM 的回复
-void AgentConversation::handleResponse(JsonValue message) {
+void AgentConversation::handleResponse(json message) {
     auto const& toolCalls = jsonGet(message, "tool_calls");
     if (!toolCalls.is_array() || toolCalls.empty()) {
         if (!provider_.streaming) {
@@ -95,11 +95,11 @@ void AgentConversation::handleResponse(JsonValue message) {
         auto result = registry_.executeOpenAIToolCall(toolCall);
         if (result.is_object() && result.contains("error"))
             throw std::runtime_error(jsonGet(result, "error").get<std::string>());
-        messages_.emplace_back(std::map<std::string, JsonValue>{
+        messages_.push_back(json::object({
             {"role",         "tool"},
             {"tool_call_id", id},
             {"content",      result.dump()},
-        });
+        }));
     }
     requestNext();
 }

@@ -6,12 +6,11 @@
 
 #include <cmath>
 #include <functional>
-#include <map>
 #include <string>
 #include <string_view>
 #include <vector>
 
-using FunctionHandler = std::function<JsonValue(JsonValue const& args)>;
+using FunctionHandler = std::function<json(json const& args)>;
 
 struct FunctionDefinition {
     std::string                        name;
@@ -20,19 +19,20 @@ struct FunctionDefinition {
     std::vector<std::string>           requiredParams;
     FunctionHandler                    handler;
 
-    JsonValue toSchema() const {
-        std::map<std::string, JsonValue> schema;
-        schema.emplace("name", name);
-        schema["description"] = description;
+    json toSchema() const {
+        auto schema = json::object({
+            {"name", name},
+            {"description", description},
+        });
 
-        std::map<std::string, JsonValue> params;
+        std::map<std::string, json> params;
         params["type"] = "object";
         // params["additionalProperties"] = false;
-        std::map<std::string, JsonValue> properties;
+        std::map<std::string, json> properties;
         for (auto const& [paramName, paramType] : parameters) {
-            std::map<std::string, JsonValue> property;
-            property["type"] = paramType;
-            properties[paramName] = property;
+            properties[paramName] = json::object({
+                {"type", paramType},
+            });
         }
         params["properties"] = properties;
         params.emplace("required", requiredParams);
@@ -46,7 +46,7 @@ class FunctionRegistry {
 private:
     std::map<std::string, FunctionDefinition> functions_;
 
-    static bool matchesType(JsonValue const& value, DataType type) {
+    static bool matchesType(json const& value, DataType type) {
         switch (type) {
             case DataType::Null: return value.is_null();
             case DataType::Object: return value.is_object();
@@ -72,17 +72,17 @@ public:
         return functions_.at(name);
     }
 
-    JsonValue getSchemas() const {
-        std::vector<JsonValue> schemas;
+    json getSchemas() const {
+        auto schemas = json::array();
         for (auto const& [name, definition] : functions_)
             schemas.push_back(definition.toSchema());
         return schemas;
     }
 
-    JsonValue getTools() const {
-        std::vector<JsonValue> tools;
+    json getTools() const {
+        auto tools = json::array();
         for (auto const& [name, definition] : functions_) {
-            tools.emplace_back(std::map<std::string, JsonValue>{
+            tools.emplace_back(std::map<std::string, json>{
                 {"type", "function"},
                 {"function", definition.toSchema()},
             });
@@ -90,19 +90,19 @@ public:
         return tools;
     }
 
-    JsonValue call(std::string const& name, JsonValue const& args) const {
+    json call(std::string const& name, json const& args) const {
         if (!hasFunction(name)) {
-            return std::map<std::string, JsonValue>{
-                {"error", "Function not found: " + name}
-            };
+            return json::object({
+                {"error", "Function not found: " + name},
+            });
         }
 
         auto const& definition = getFunction(name);
         for (auto const& required : definition.requiredParams) {
             if (!args.contains(required)) {
-                return std::map<std::string, JsonValue>{
+                return json::object({
                     {"error", "Missing required parameter: " + required}
-                };
+                });
             }
         }
 
@@ -111,53 +111,53 @@ public:
                 continue;
             auto const& value = jsonGet(args, paramName);
             if (!matchesType(value, paramType)) {
-                return std::map<std::string, JsonValue>{
+                return json::object({
                     {"error", "Invalid type for parameter '" + paramName + "' in function '"
                                   + name + "': expected "
                                   + std::string{knotix::dataTypeName(paramType)} + ", got "
                                   + std::string{knotix::typeOf(value)}}
-                };
+                });
             }
         }
 
         try {
             return definition.handler(args);
         } catch (std::exception const& e) {
-            return std::map<std::string, JsonValue>{
+            return json::object({
                 {"error", "Function call error in '" + name + "': " + e.what()}
-            };
+            });
         }
     }
 
-    JsonValue executeFromToolCall(std::string const& toolCallJson) const {
+    json executeFromToolCall(std::string const& toolCallJson) const {
         try {
-            return executeFromToolCall(JsonValue::parse(toolCallJson));
+            return executeFromToolCall(json::parse(toolCallJson));
         } catch (std::exception const& e) {
-            return std::map<std::string, JsonValue>{
+            return json::object({
                 {"error", std::string{"Invalid tool-call JSON: "} + e.what()}
-            };
+            });
         }
     }
 
-    JsonValue executeFromToolCall(JsonValue const& toolCall) const {
+    json executeFromToolCall(json const& toolCall) const {
         return call(jsonGet(toolCall, "name").get<std::string>(),
                     jsonGet(toolCall, "arguments"));
     }
 
-    JsonValue executeOpenAIToolCall(JsonValue const& toolCall) const {
+    json executeOpenAIToolCall(json const& toolCall) const {
         try {
-            auto const function = message::parseFunctionCall(jsonGet(toolCall, "function"));
+            auto const function = jsonGet(toolCall, "function").get<message::FunctionCall>();
             
             auto const& arguments = function.Arguments;
-            JsonValue args;
+            json args;
             if (!arguments.empty()) {
-                args = JsonValue::parse(arguments);
+                args = json::parse(arguments);
             }
             return call(function.Name, args);
         } catch (std::exception const& e) {
-            return std::map<std::string, JsonValue>{
+            return json::object({
                 {"error", std::string{"Invalid OpenAI tool call: "} + e.what()}
-            };
+            });
         }
     }
 };
@@ -170,7 +170,7 @@ inline FunctionRegistry makeFunctionRegistry() {
         .description    = "将两个数字相加",
         .parameters     = {{"a", DataType::Number}, {"b", DataType::Number}},
         .requiredParams = {"a", "b"},
-        .handler        = [](JsonValue const& args) -> JsonValue {
+        .handler        = [](json const& args) -> json {
             return jsonGet(args, "a").get<double>() + jsonGet(args, "b").get<double>();
         },
     });

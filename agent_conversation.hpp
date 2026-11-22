@@ -24,14 +24,14 @@ public:
 
 private:
     void requestNext();
-    void handleResponse(JsonValue message);
+    void handleResponse(json message);
     void finish(std::exception_ptr error = {});
 
     caf::net::multiplexer& mpx_;
     ProviderConfig provider_;
     FunctionRegistry registry_;
-    JsonValue tools_;
-    std::vector<JsonValue> messages_;
+    json tools_;
+    std::vector<json> messages_;
     completion_type completion_;
     size_t requestCount_ = 0;
     bool finished_ = false;

@@ -88,26 +88,26 @@ public:
             std::cout << '\n';
     }
 
-    JsonValue message() const {
-        std::map<std::string, JsonValue> result{
+    json message() const {
+        auto result = json::object({
             {"role", "assistant"},
             {"content", content_},
-        };
+        });
         if (!toolCalls_.empty()) {
-            std::vector<JsonValue> calls;
+            std::vector<json> calls;
             calls.reserve(toolCalls_.size());
             for (auto const& [index, call] : toolCalls_) {
                 if (call.id.empty() || call.name.empty())
                     throw std::runtime_error("Provider returned an incomplete tool call.");
-                std::map<std::string, JsonValue> function{
+                auto function = json::object({
                     {"name", call.name},
                     {"arguments", call.arguments},
-                };
-                calls.emplace_back(std::map<std::string, JsonValue>{
+                });
+                calls.push_back(json::object({
                     {"id", call.id},
                     {"type", "function"},
                     {"function", std::move(function)},
-                });
+                }));
             }
             result.emplace("tool_calls", std::move(calls));
         }
@@ -148,7 +148,7 @@ private:
             return;
         }
 
-        auto event = JsonValue::parse(data);
+        auto event = json::parse(data);
         auto const& choices = jsonGet(event, "choices");
         if (!choices.is_array())
             throw std::runtime_error("Provider stream event has no choices array.");
@@ -406,12 +406,12 @@ private:
                                          + std::to_string(stream_.statusCode) + ": "
                                          + stream_.errorBody);
 
-            JsonValue message;
+            json message;
             if (provider_.streaming) {
                 stream_.parser.finish();
                 message = stream_.parser.message();
             } else {
-                auto response = JsonValue::parse(stream_.responseBody);
+                auto response = json::parse(stream_.responseBody);
                 auto const& choices = jsonGet(response, "choices");
                 if (!choices.is_array() || choices.empty())
                     throw std::runtime_error("Provider returned no choices: "
@@ -429,7 +429,7 @@ private:
         }
     }
 
-    void finish(JsonValue message, std::string error) {
+    void finish(json message, std::string error) {
         cleanup();
         auto completion = std::move(completion_); // 只能回调一次
         if (completion)

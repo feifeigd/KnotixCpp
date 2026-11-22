@@ -19,7 +19,7 @@ public:
     CurlRuntime& operator=(CurlRuntime const&) = delete;
 };
 
-using ChatCompletionCallback = std::function<void(JsonValue, std::string)>;
+using ChatCompletionCallback = std::function<void(json, std::string)>;
 
 void requestChatCompletion(caf::net::multiplexer& mpx, ProviderConfig const& provider,
                            std::string payload, ChatCompletionCallback completion);

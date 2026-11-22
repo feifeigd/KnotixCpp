@@ -4,10 +4,15 @@
 
 namespace message {
 
+// RoleType is the type of the role of a message.
 enum class RoleType {
+    // Assistant is the role of an assistant, means the message is returned by ChatModel.
     Assistant,
+    // User is the role of a user, means the message is a user message.
     User,
+    // System is the role of a system, means the message is a system message.
     System,
+    // Tool is the role of a tool, means the message is a tool call output.
     Tool,
 };
 NLOHMANN_JSON_SERIALIZE_ENUM(RoleType, {
@@ -20,29 +25,15 @@ NLOHMANN_JSON_SERIALIZE_ENUM(RoleType, {
 // FunctionCall is the function call in a message.
 // It's used in Assistant Message.
 struct FunctionCall {
+    // Name is the name of the function to call, it can be used to identify the specific function.
     std::string Name; // name
+    // Arguments is the arguments to call the function with, in JSON format.
     std::string Arguments; // arguments
 };
 
-inline FunctionCall const parseFunctionCall(JsonValue const& value) {
-    if (!value.is_object())
-        throw std::invalid_argument("FunctionCall must be a JSON object");
-
-    auto const& name = jsonGet(value, "name");
-    auto const& arguments = jsonGet(value, "arguments");
-
-    if (!name.is_string())
-        throw std::invalid_argument("FunctionCall.name must be a string");
-
-    std::string args;
-    if (arguments.is_string())
-        args = arguments.get<std::string>(); // 常见的 OpenAI 格式
-    else if (arguments.is_object() || arguments.is_array())
-        args = arguments.dump(); // 若 arguments 已经是 JSON 值，序列化后存入 string
-    else
-        throw std::invalid_argument("FunctionCall.arguments must be a string, object, or array");
-
-    return {.Name = name.get<std::string>(), .Arguments = std::move(args)};
+inline void from_json(const json& j, FunctionCall& fc) {
+    j.at("name").get_to(fc.Name);
+    j.at("arguments").get_to(fc.Arguments);
 }
 
 }

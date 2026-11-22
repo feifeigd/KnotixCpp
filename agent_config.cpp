@@ -8,7 +8,7 @@
 namespace agent {
 namespace {
 
-std::string requireConfigString(JsonValue const& object, std::string const& key,
+std::string requireConfigString(json const& object, std::string const& key,
                                 std::string const& context) {
     auto const& value = jsonGet(object, key);
     if (!value.is_string() || value.get_ref<std::string const&>().empty())
@@ -36,7 +36,7 @@ ProviderConfig loadProviderConfig() {
     if (!input)
         throw std::runtime_error("Unable to open agent config file '" + path + "'.");
 
-    auto config = JsonValue::parse(input);
+    auto config = json::parse(input);
     if (!config.is_object())
         throw std::runtime_error("Agent config must be a JSON object.");
     auto const profileName = requireConfigString(config, "active_provider", "Agent config");
