@@ -1,6 +1,7 @@
 
 add_library(knotix STATIC
     knotix.cpp
+    json.hpp
     schema/message.cpp
     schema/message.h
     schema/tool.h

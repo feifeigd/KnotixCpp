@@ -1,6 +1,6 @@
 #pragma once
 
-#include "json.hpp"
+#include "knotix/json.hpp"
 #include <knotix/schema/message.h>
 #include "knotix/schema/tool.h"
 
@@ -31,7 +31,7 @@ struct FunctionDefinition {
         std::map<std::string, JsonValue> properties;
         for (auto const& [paramName, paramType] : parameters) {
             std::map<std::string, JsonValue> property;
-            property["type"] = std::string{to_string(paramType)};
+            property["type"] = paramType;
             properties[paramName] = property;
         }
         params["properties"] = properties;
@@ -51,38 +51,12 @@ private:
             case DataType::Null: return value.is_null();
             case DataType::Object: return value.is_object();
             case DataType::Number: return value.is_number();
-            case DataType::Integer: return isIntegerValue(value);
+            case DataType::Integer: return knotix::isIntegerValue(value);
             case DataType::String: return value.is_string();
             case DataType::Array: return value.is_array();
             case DataType::Boolean: return value.is_boolean();
         }
         return false;
-    }
-
-    static bool isIntegerValue(JsonValue const& value) {
-        if (!value.is_number())
-            return false;
-        auto const number = value.get<double>();
-        return std::isfinite(number) && std::trunc(number) == number;
-    }
-
-    static std::string_view typeOf(JsonValue const& value) {
-        using ValueType = JsonValue::value_t;
-        switch (value.type()) {
-            case ValueType::null: return to_string(DataType::Null);
-            case ValueType::object: return to_string(DataType::Object);
-            case ValueType::number_integer:
-            case ValueType::number_unsigned: return to_string(DataType::Integer);
-            case ValueType::number_float:
-                return isIntegerValue(value) ? to_string(DataType::Integer)
-                                             : to_string(DataType::Number);
-            case ValueType::string: return to_string(DataType::String);
-            case ValueType::array: return to_string(DataType::Array);
-            case ValueType::boolean: return to_string(DataType::Boolean);
-            case ValueType::binary: return "binary";
-            case ValueType::discarded: return "discarded";
-        }
-        return "unknown";
     }
 
 public:
@@ -140,8 +114,8 @@ public:
                 return std::map<std::string, JsonValue>{
                     {"error", "Invalid type for parameter '" + paramName + "' in function '"
                                   + name + "': expected "
-                                  + std::string{to_string(paramType)} + ", got "
-                                  + std::string{typeOf(value)}}
+                                  + std::string{knotix::dataTypeName(paramType)} + ", got "
+                                  + std::string{knotix::typeOf(value)}}
                 };
             }
         }
