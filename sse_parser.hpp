@@ -104,14 +104,16 @@ private:
     void dispatchEvent() {
         if (eventData_.empty() || done_)
             return;
-        auto data = std::move(eventData_);
-        eventData_.clear();
+        // View the buffered event; json::parse copies what it needs, so the
+        // buffer can be reused once the event is parsed.
+        auto const data = std::string_view{eventData_};
         if (data == "[DONE]") {
             done_ = true;
+            eventData_.clear();
             return;
         }
-
         auto event = json::parse(data);
+        eventData_.clear();
         auto const& choices = jsonGet(event, "choices");
         if (!choices.is_array())
             throw std::runtime_error("Provider stream event has no choices array.");
