@@ -5,11 +5,17 @@
 namespace message {
 
 enum class RoleType {
-    Assistang,
+    Assistant,
     User,
     System,
     Tool,
 };
+NLOHMANN_JSON_SERIALIZE_ENUM(RoleType, {
+    {RoleType::Assistant, "assistant"},
+    {RoleType::User,      "user"},
+    {RoleType::System,    "system"},
+    {RoleType::Tool,      "tool"},
+})
 
 // FunctionCall is the function call in a message.
 // It's used in Assistant Message.

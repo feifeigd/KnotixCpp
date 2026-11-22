@@ -185,6 +185,8 @@ private:
     }
 
     void appendContent(std::string const& fragment) {
+        if (fragment.empty())
+            return;
         if (!printedText_) {
             std::cout << "Assistant: ";
             printedText_ = true;

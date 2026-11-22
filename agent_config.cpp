@@ -35,13 +35,8 @@ ProviderConfig loadProviderConfig() {
     std::ifstream input{path, std::ios::binary};
     if (!input)
         throw std::runtime_error("Unable to open agent config file '" + path + "'.");
-    std::ostringstream contents;
-    contents << input.rdbuf();
-    if (input.bad())
-        throw std::runtime_error("Failed to read agent config file '" + path + "'.");
 
-    auto configText = contents.str();
-    auto config = JsonValue::parse(configText);
+    auto config = JsonValue::parse(input);
     if (!config.is_object())
         throw std::runtime_error("Agent config must be a JSON object.");
     auto const profileName = requireConfigString(config, "active_provider", "Agent config");

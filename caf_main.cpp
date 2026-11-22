@@ -22,8 +22,8 @@
 #include <string>
 
 CAF_BEGIN_TYPE_ID_BLOCK(function_calling, first_custom_type_id)
-    CAF_ADD_ATOM(function_calling, call_request_atom)
-    CAF_ADD_ATOM(function_calling, call_result_atom)
+    CAF_ADD_ATOM   (function_calling, call_request_atom)
+    CAF_ADD_ATOM   (function_calling, call_result_atom)
     CAF_ADD_TYPE_ID(function_calling, (JsonValue), "JsonValue")
 CAF_END_TYPE_ID_BLOCK(function_calling)
 
