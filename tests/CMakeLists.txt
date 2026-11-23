@@ -5,6 +5,7 @@ add_executable(knotix_tests
     message_test.cpp
     function_registry_test.cpp
     agent_config_test.cpp
+    chatmodel_test.cpp
     sse_parser_test.cpp
     sse_end_to_end_test.cpp
     agent_conversation_test.cpp

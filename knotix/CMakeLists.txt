@@ -5,6 +5,7 @@ add_library(knotix STATIC
     schema/message.cpp
     schema/message.h
     schema/tool.h
+    ext/components/model/openai/chatmodel.h
 )
 
 target_include_directories(knotix PUBLIC "${PROJECT_SOURCE_DIR}")

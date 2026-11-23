@@ -62,14 +62,14 @@ public:
             for (auto const& [index, call] : toolCalls_) {
                 if (call.id.empty() || call.name.empty())
                     throw std::runtime_error("Provider returned an incomplete tool call.");
-                auto function = json::object({
-                    {"name", call.name},
-                    {"arguments", call.arguments},
-                });
+                
                 calls.push_back(json::object({
                     {"id", call.id},
                     {"type", "function"},
-                    {"function", std::move(function)},
+                    {"function", json::object({
+                        {"name", call.name},
+                        {"arguments", call.arguments},
+                    })},
                 }));
             }
             result.emplace("tool_calls", std::move(calls));
@@ -115,6 +115,7 @@ private:
         auto event = json::parse(data);
         eventData_.clear();
         auto const& choices = jsonGet(event, "choices");
+        auto d = choices.dump();
         if (!choices.is_array())
             throw std::runtime_error("Provider stream event has no choices array.");
         if (choices.empty())
@@ -157,7 +158,7 @@ private:
             printedText_ = true;
         }
         content_.append(fragment);
-        out_ << fragment << std::flush;
+        out_ << fragment << std::flush; // 有任何内容都输出，打字机效果
     }
 
     std::ostream& out_;

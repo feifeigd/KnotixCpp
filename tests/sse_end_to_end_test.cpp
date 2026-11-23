@@ -59,7 +59,7 @@ ProviderConfig mockProvider(uint16_t port, bool streaming) {
     provider.baseUrl = "http://127.0.0.1:" + std::to_string(port);
     provider.model = "mock-model";
     provider.streaming = streaming;
-    provider.apiKey = "test-key";
+    provider.chatModelConfig.APIKey = "test-key";
     return provider;
 }
 

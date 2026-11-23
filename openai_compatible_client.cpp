@@ -173,8 +173,8 @@ private:
             if (multi_ == nullptr)
                 throw std::runtime_error("curl_multi_init failed.");
 
-            if (!provider_.apiKey.empty())
-                headers_.append("Authorization: Bearer " + provider_.apiKey);
+            if (!provider_.chatModelConfig.APIKey.empty())
+                headers_.append("Authorization: Bearer " + provider_.chatModelConfig.APIKey);
             headers_.append("Content-Type: application/json");
             headers_.append(provider_.streaming ? "Accept: text/event-stream"
                                                 : "Accept: application/json");

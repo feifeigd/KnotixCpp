@@ -48,14 +48,9 @@ ProviderConfig parseProviderConfig(json const& profile, std::string const& conte
             throw std::runtime_error(context + " field 'extra_body' must be an object.");
         result.extraBody = extraBody;
     }
-    if (profile.contains("api_key_env")) {
-        auto const apiKeyEnv = requireConfigString(profile, "api_key_env", context);
-        auto const apiKey = std::getenv(apiKeyEnv.c_str());
-        if (apiKey == nullptr || *apiKey == '\0')
-            throw std::runtime_error(context + " requires environment variable '"
-                                     + apiKeyEnv + "'.");
-        result.apiKey = apiKey;
-    }
+
+    result.chatModelConfig = profile.get<openai::ChatModelConfig>();
+    
     return result;
 }
 
